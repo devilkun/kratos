@@ -11,7 +11,7 @@ import (
 
 type (
 	transporter func(ctx context.Context) (transport.Transporter, bool)
-	MatchFunc   func(operation string) bool
+	MatchFunc   func(ctx context.Context, operation string) bool
 )
 
 var (
@@ -79,11 +79,17 @@ func (b *Builder) Build() middleware.Middleware {
 	} else {
 		transporter = serverTransporter
 	}
-	return selector(transporter, b.matchs, b.ms...)
+	return selector(transporter, b.matches, b.ms...)
 }
 
-// matchs is match operation compliance Builder
-func (b *Builder) matchs(operation string) bool {
+// matches is match operation compliance Builder
+func (b *Builder) matches(ctx context.Context, transporter transporter) bool {
+	info, ok := transporter(ctx)
+	if !ok {
+		return false
+	}
+
+	operation := info.Operation()
 	for _, prefix := range b.prefix {
 		if prefixMatch(prefix, operation) {
 			return true
@@ -101,21 +107,19 @@ func (b *Builder) matchs(operation string) bool {
 	}
 
 	if b.match != nil {
-		return b.match(operation)
+		if b.match(ctx, operation) {
+			return true
+		}
 	}
+
 	return false
 }
 
 // selector middleware
-func selector(transporter transporter, match MatchFunc, ms ...middleware.Middleware) middleware.Middleware {
+func selector(transporter transporter, match func(context.Context, transporter) bool, ms ...middleware.Middleware) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			info, ok := transporter(ctx)
-			if !ok {
-				return handler(ctx, req)
-			}
-
-			if !match(info.Operation()) {
+			if !match(ctx, transporter) {
 				return handler(ctx, req)
 			}
 			return middleware.Chain(ms...)(handler)(ctx, req)

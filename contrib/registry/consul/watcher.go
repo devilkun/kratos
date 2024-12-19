@@ -19,13 +19,14 @@ func (w *watcher) Next() (services []*registry.ServiceInstance, err error) {
 	select {
 	case <-w.ctx.Done():
 		err = w.ctx.Err()
+		return
 	case <-w.event:
 	}
+
 	ss, ok := w.set.services.Load().([]*registry.ServiceInstance)
+
 	if ok {
-		for _, s := range ss {
-			services = append(services, s)
-		}
+		services = append(services, ss...)
 	}
 	return
 }
